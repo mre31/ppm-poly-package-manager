@@ -128,15 +128,16 @@ def ppm_help(tab):
     tab.add("Usage: ppm <command> [options]")
     tab.add("")
     tab.add("Commands:")
-    tab.add("  install <plugin_name>   - Installs a plugin from the repository.")
-    tab.add("  uninstall <plugin_name> - Uninstalls a plugin.")
-    tab.add("  update <plugin_name|--all> - Updates one or all installed plugins.")
-    tab.add("  list [-i]                 - Lists available or installed plugins.")
-    tab.add("  search <keyword>          - Searches for plugins by keyword.")
-    tab.add("  info <plugin_name>        - Shows detailed information about a plugin.")
-    tab.add("  enable <plugin_name>      - Enables an installed plugin.")
-    tab.add("  disable <plugin_name>     - Disables an installed plugin.")
-    tab.add("  help                      - Shows this help message.")
+    tab.add("  install (i) <plugin_name>   - Installs a plugin from the repository.")
+    tab.add("  uninstall (un) <plugin_name> - Uninstalls a plugin.")
+    tab.add("  update (up) <plugin|--all>  - Updates one or all installed plugins.")
+    tab.add("  list (ls) [-i]              - Lists available or installed plugins.")
+    tab.add("  search <keyword>            - Searches for plugins by keyword.")
+    tab.add("  info <plugin_name>          - Shows detailed information about a plugin.")
+    tab.add("  enable <plugin_name>        - Enables an installed plugin.")
+    tab.add("  disable <plugin_name>       - Disables an installed plugin.")
+    tab.add("  doctor                      - Checks for potential issues.")
+    tab.add("  help                        - Shows this help message.")
 
 def ppm_list(tab, installed_only=False):
     """Lists available or installed plugins."""
@@ -274,6 +275,7 @@ def ppm_info(tab, plugin_name):
     tab.add(f"  Author:      {info.get('author', 'N/A')}")
     tab.add(f"  Description: {info.get('description', 'No description provided.')}")
     tab.add(f"  File:        {info.get('file', 'N/A')}")
+    tab.add(f"  SHA256:      {info.get('sha256', 'N/A')}")
 
 def _get_plugin_paths(plugin_name):
     """Helper to get enabled and disabled paths for a plugin."""
@@ -325,6 +327,71 @@ def ppm_disable(tab, plugin_name):
     except OSError as e:
         tab.add(f"Error: Could not disable plugin. {e}")
 
+def ppm_doctor(tab):
+    """Checks for potential issues with the PPM setup."""
+    tab.add("--- Running PPM Doctor ---")
+    issues_found = 0
+
+    # 1. Check plplugins directory
+    plugins_dir = get_plugins_dir()
+    tab.add(f"Checking plugin directory: {plugins_dir}")
+    if not os.path.exists(plugins_dir):
+        tab.add("  [OK] Directory does not exist yet, but will be created on install.")
+    elif not os.access(plugins_dir, os.W_OK):
+        tab.add(f"  [FAIL] Plugin directory is not writable.")
+        issues_found += 1
+    else:
+        tab.add("  [OK] Plugin directory is writable.")
+
+    # 2. Check manifest reachability
+    tab.add("Checking remote manifest...")
+    manifest = fetch_manifest(tab)
+    if manifest is None:
+        tab.add("  [FAIL] Could not fetch the remote plugin manifest.")
+        issues_found += 1
+    else:
+        tab.add("  [OK] Remote manifest is reachable and valid.")
+
+    # 3. Verify installed plugins (if manifest is available)
+    if manifest:
+        tab.add("Verifying installed plugins...")
+        remote_plugins = manifest.get("plugins", {})
+        if not os.path.exists(plugins_dir):
+            tab.add("  No plugins installed, skipping verification.")
+        else:
+            for fname in os.listdir(plugins_dir):
+                if not fname.endswith(".py"):
+                    continue # Skip disabled plugins for hash check
+
+                plugin_name = os.path.splitext(fname)[0]
+                plugin_path = os.path.join(plugins_dir, fname)
+
+                if plugin_name not in remote_plugins:
+                    tab.add(f"  [WARN] Plugin '{plugin_name}' is orphaned (not in remote manifest).")
+                    issues_found += 1
+                    continue
+                
+                expected_hash = remote_plugins[plugin_name].get("sha256")
+                try:
+                    with open(plugin_path, 'rb') as f:
+                        content = f.read()
+                    actual_hash = hashlib.sha256(content).hexdigest()
+
+                    if actual_hash != expected_hash:
+                        tab.add(f"  [FAIL] Hash mismatch for '{plugin_name}'. It may be corrupted.")
+                        issues_found += 1
+                    else:
+                        tab.add(f"  [OK] Hash verified for '{plugin_name}'.")
+                except IOError as e:
+                    tab.add(f"  [FAIL] Could not read file '{fname}': {e}")
+                    issues_found += 1
+
+    tab.add("--- Doctor complete ---")
+    if issues_found == 0:
+        tab.add("No issues found. Your PPM setup looks healthy!")
+    else:
+        tab.add(f"Found {issues_found} issue(s). Please review the log above.")
+
 def ppm_command(tab, args):
     """
     Main handler for the 'ppm' command.
@@ -336,6 +403,15 @@ def ppm_command(tab, args):
 
     subcommand = parts[0].lower()
     arg = parts[1] if len(parts) > 1 else None
+
+    # Command aliases
+    aliases = {
+        "i": "install",
+        "un": "uninstall",
+        "up": "update",
+        "ls": "list"
+    }
+    subcommand = aliases.get(subcommand, subcommand)
     
     if subcommand == "help":
         ppm_help(tab)
@@ -356,6 +432,8 @@ def ppm_command(tab, args):
         ppm_enable(tab, arg)
     elif subcommand == "disable":
         ppm_disable(tab, arg)
+    elif subcommand == "doctor":
+        ppm_doctor(tab)
     else:
         tab.add(f"Unknown command: {subcommand}")
         ppm_help(tab)
