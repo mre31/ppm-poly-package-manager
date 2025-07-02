@@ -56,7 +56,7 @@ def get_plugins_dir():
     """Returns the absolute path to the user's plplugins directory."""
     return os.path.join(os.path.expanduser("~"), "plplugins")
 
-def ppm_install(tab, plugin_name):
+def ppm_install(tab, plugin_name, from_update=False):
     """
     Downloads and installs a plugin from the repository with hash verification.
     """
@@ -85,7 +85,7 @@ def ppm_install(tab, plugin_name):
     plugins_dir = get_plugins_dir()
     dest_filename = os.path.basename(plugin_file)
     plugin_path = os.path.join(plugins_dir, dest_filename)
-    if os.path.exists(plugin_path):
+    if os.path.exists(plugin_path) and not from_update:
         tab.add(f"Plugin '{plugin_name}' is already installed.")
         return
 
@@ -174,7 +174,7 @@ def ppm_list(tab, installed_only=False):
         for name, info in plugins.items():
             tab.add(f"  - {name} (v{info.get('version', 'N/A')}): {info.get('description', 'No description')}")
 
-def ppm_uninstall(tab, plugin_name):
+def ppm_uninstall(tab, plugin_name, from_update=False):
     """Uninstalls a plugin."""
     if not plugin_name:
         tab.add("Usage: ppm uninstall <plugin_name>")
@@ -198,7 +198,7 @@ def ppm_uninstall(tab, plugin_name):
 
     plugin_path = os.path.join(plugins_dir, plugin_file_name)
 
-    if not os.path.exists(plugin_path):
+    if not os.path.exists(plugin_path) and not from_update:
         tab.add(f"Error: Plugin '{plugin_name}' is not installed.")
         return
 
@@ -233,10 +233,42 @@ def ppm_search(tab, keyword):
         tab.add(f"  - {name} (v{info.get('version', 'N/A')}): {info.get('description', 'No description')}")
 
 def ppm_update(tab, plugin_name):
-    """Updates one or all plugins."""
+    """Updates one or all plugins by checking local vs remote hashes."""
     if not plugin_name:
         tab.add("Usage: ppm update <plugin_name|--all>")
         return
+
+    manifest = fetch_manifest(tab)
+    if manifest is None:
+        return
+    
+    remote_plugins = manifest.get("plugins", {})
+
+    def _update_single(p_name):
+        if p_name not in remote_plugins:
+            tab.add(f"Skipping '{p_name}': Not found in remote repository.")
+            return
+
+        enabled_path, _ = _get_plugin_paths(p_name)
+        if not os.path.exists(enabled_path):
+            tab.add(f"Skipping '{p_name}': Not installed or is disabled.")
+            return
+
+        expected_hash = remote_plugins[p_name].get("sha256")
+        try:
+            with open(enabled_path, 'rb') as f:
+                local_hash = hashlib.sha256(f.read()).hexdigest()
+        except IOError:
+            tab.add(f"Could not read local file for '{p_name}'. Skipping.")
+            return
+
+        if local_hash == expected_hash:
+            tab.add(f"Plugin '{p_name}' is already up to date.")
+        else:
+            tab.add(f"Updating '{p_name}'...")
+            # To update, we first uninstall, then reinstall
+            ppm_uninstall(tab, p_name, from_update=True)
+            ppm_install(tab, p_name, from_update=True)
 
     if plugin_name == "--all":
         plugins_dir = get_plugins_dir()
@@ -250,9 +282,9 @@ def ppm_update(tab, plugin_name):
             return
             
         for p_name in installed_plugins:
-            ppm_install(tab, p_name) # Re-use the install logic
+            _update_single(p_name)
     else:
-        ppm_install(tab, plugin_name) # Re-use the install logic for a single plugin
+        _update_single(plugin_name)
 
 def ppm_info(tab, plugin_name):
     """Displays detailed information about a plugin."""
