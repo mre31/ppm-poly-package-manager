@@ -96,8 +96,10 @@ def ppm_help(tab):
     tab.add("Commands:")
     tab.add("  install <plugin_name>   - Installs a plugin from the repository.")
     tab.add("  uninstall <plugin_name> - Uninstalls a plugin.")
+    tab.add("  update <plugin_name|--all> - Updates one or all installed plugins.")
     tab.add("  list                      - Lists all available plugins in the repository.")
     tab.add("  list -i                   - Lists all installed plugins.")
+    tab.add("  search <keyword>          - Searches for plugins by keyword.")
     tab.add("  help                      - Shows this help message.")
 
 def ppm_list(tab, installed_only=False):
@@ -157,7 +159,7 @@ def ppm_uninstall(tab, plugin_name):
             tab.add(f"Warning: Plugin '{plugin_name}' not in manifest, attempting to remove anyway.")
             plugin_file_name = f"{plugin_name}.py"
         else:
-            plugin_file_name = plugin_info.get("file")
+            plugin_file_name = os.path.basename(plugin_info.get("file"))
 
     plugin_path = os.path.join(plugins_dir, plugin_file_name)
 
@@ -171,6 +173,63 @@ def ppm_uninstall(tab, plugin_name):
         tab.add("Please restart Poly for the change to take effect.")
     except OSError as e:
         tab.add(f"Error: Could not remove plugin file. {e}")
+
+def ppm_search(tab, keyword):
+    """Searches for plugins in the repository."""
+    if not keyword:
+        tab.add("Usage: ppm search <keyword>")
+        return
+
+    tab.add(f"Searching for plugins matching '{keyword}'...")
+    manifest_url = REPO_URL + MANIFEST_FILE
+    try:
+        with urllib.request.urlopen(manifest_url) as response:
+            manifest_data = response.read().decode('utf-8')
+            manifest = json.loads(manifest_data)
+    except (HTTPError, URLError) as e:
+        tab.add(f"  Error: Could not fetch plugin manifest. {e}")
+        return
+    except json.JSONDecodeError:
+        tab.add("  Error: Could not parse plugin manifest.")
+        return
+
+    plugins = manifest.get("plugins", {})
+    matches = []
+    for name, info in plugins.items():
+        if keyword.lower() in name.lower() or keyword.lower() in info.get('description', '').lower():
+            matches.append((name, info))
+
+    if not matches:
+        tab.add("No plugins found matching your search.")
+        return
+
+    for name, info in matches:
+        tab.add(f"  - {name} (v{info.get('version', 'N/A')}): {info.get('description', 'No description')}")
+
+def ppm_update(tab, plugin_name):
+    """Updates one or all plugins."""
+    if not plugin_name:
+        tab.add("Usage: ppm update <plugin_name|--all>")
+        return
+
+    if plugin_name == "--all":
+        tab.add("Updating all installed plugins...")
+        plugins_dir = get_plugins_dir()
+        if not os.path.exists(plugins_dir):
+            tab.add("No plugins installed.")
+            return
+        
+        installed_plugins = [os.path.splitext(fname)[0] for fname in os.listdir(plugins_dir) if fname.endswith(".py")]
+        if not installed_plugins:
+            tab.add("No plugins to update.")
+            return
+            
+        for p_name in installed_plugins:
+            tab.add(f"\n--- Updating {p_name} ---")
+            ppm_install(tab, p_name) # Re-use the install logic
+    else:
+        tab.add(f"Updating plugin '{plugin_name}'...")
+        ppm_install(tab, plugin_name) # Re-use the install logic for a single plugin
 
 def ppm_command(tab, args):
     """
@@ -196,9 +255,16 @@ def ppm_command(tab, args):
     elif subcommand == "list":
         installed_only = len(parts) > 1 and parts[1] == "-i"
         ppm_list(tab, installed_only)
+    elif subcommand == "search":
+        keyword = parts[1] if len(parts) > 1 else None
+        ppm_search(tab, keyword)
+    elif subcommand == "update":
+        plugin_name = parts[1] if len(parts) > 1 else None
+        ppm_update(tab, plugin_name)
     else:
         tab.add(f"Unknown command: {subcommand}")
         ppm_help(tab)
+
 
 
 
