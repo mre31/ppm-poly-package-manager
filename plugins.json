@@ -2,6 +2,7 @@
   "plugins": {
     "calculator": {
       "file": "plugins/calculator.py",
+      "author": "mre31",
       "description": "An advanced calculator plugin for Poly.",
       "version": "1.5.0",
       "sha256": "25432d1867f3f0d7447a4ca885bec29710522dc81665fb505f226ddff1f87081"
