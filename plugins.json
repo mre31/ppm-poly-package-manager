@@ -6,6 +6,13 @@
       "description": "An advanced calculator plugin for Poly.",
       "version": "1.5.0",
       "sha256": "25432d1867f3f0d7447a4ca885bec29710522dc81665fb505f226ddff1f87081"
+    },
+    "package_manager": {
+      "file": "package_manager.py",
+      "author": "mre31",
+      "description": "A package manager for Poly to install plugins from a central repository.",
+      "version": "1.0.0",
+      "sha256": "1b5cfa03b1f9ec5b51eef2e50f13ea55c8343329982479756607f43d9cc7ff4f"
     }
   }
 }
