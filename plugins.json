@@ -1,16 +1,9 @@
 {
   "plugins": {
     "calculator": {
-      "file": "calculator.py",
-      "description": "An advanced calculator plugin for Poly."
-    },
-    "theme-manager": {
-      "file": "theme_manager.py",
-      "description": "A plugin to manage and switch themes."
-    },
-    "git-tools": {
-      "file": "git_tools.py",
-      "description": "A set of tools for Git integration."
+      "file": "plugins/calculator.py",
+      "description": "An advanced calculator plugin for Poly.",
+      "sha256": "25432d1867f3f0d7447a4ca885bec29710522dc81665fb505f226ddff1f87081"
     }
   }
-}
+} 
